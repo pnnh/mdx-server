@@ -111,8 +111,8 @@ class IndexBuilder(object):
 
     def _replace_stylesheet(self, txt):
         # substitute stylesheet definition
-        txt_list = re.split('`\d+`', txt)
-        txt_tag = re.findall('`\d+`', txt)
+        txt_list = re.split(r'`\d+`', txt)
+        txt_tag = re.findall(r'`\d+`', txt)
         txt_styled = txt_list[0]
         for j, p in enumerate(txt_list[1:]):
             style = self._stylesheet[txt_tag[j][1:-1]]
@@ -263,10 +263,9 @@ class IndexBuilder(object):
             # decompress
             _record_block = zlib.decompress(record_block_compressed[8:])
         record = _record_block[index['record_start'] - index['offset']:index['record_end'] - index['offset']]
-        record = record = record.decode(self._encoding, errors='ignore').strip(u'\x00').encode('utf-8')
+        record = record.decode(self._encoding, errors='ignore').strip(u'\x00')
         if self._stylesheet:
             record = self._replace_stylesheet(record)
-        record = record.decode('utf-8')
         return record
 
     def get_mdd_by_index(self, fmdx, index):
@@ -294,7 +293,7 @@ class IndexBuilder(object):
 
     def mdx_lookup(self, keyword):
         conn = sqlite3.connect(self._mdx_db)
-        cursor = conn.execute("SELECT * FROM MDX_INDEX WHERE key_text = " + "\"" + keyword + "\"")
+        cursor = conn.execute("SELECT * FROM MDX_INDEX WHERE key_text = ?", (keyword,))
         lookup_result_list = []
         mdx_file = open(self._mdx_file,'rb')
         for result in cursor:
@@ -313,7 +312,7 @@ class IndexBuilder(object):
 	
     def mdd_lookup(self, keyword):
         conn = sqlite3.connect(self._mdd_db)
-        cursor = conn.execute("SELECT * FROM MDX_INDEX WHERE key_text = " + "\"" + keyword + "\"")
+        cursor = conn.execute("SELECT * FROM MDX_INDEX WHERE key_text = ?", (keyword,))
         lookup_result_list = []
         mdd_file = open(self._mdd_file,'rb')
         for result in cursor:

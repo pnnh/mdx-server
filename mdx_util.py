@@ -3,18 +3,27 @@
 
 import sys
 import re
+import subprocess
 from file_util import *
 
 def get_definition_mdx(word, builder):
     """根据关键字得到MDX词典的解释"""
+    # Only use the first line — callers may pass multi-line selected text
+    word = word.split('\n')[0].strip()
     content = builder.mdx_lookup(word)
     if len(content) < 1:
-        fp = os.popen('python lemma.py ' + word)
-        word = fp.read().strip()
-        fp.close()
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        proc = subprocess.run(
+            [sys.executable, os.path.join(script_dir, 'lemma.py'), word],
+            capture_output=True, text=True
+        )
+        word = proc.stdout.strip()
         print("lemma: " + word)
-        content = builder.mdx_lookup(word)
+        if word:
+            content = builder.mdx_lookup(word)
     pattern = re.compile(r"@@@LINK=([\w\s]*)")
+    if len(content) < 1:
+        return [b'']
     rst = pattern.match(content[0])
     if rst is not None:
         link = rst.group(1).strip()
@@ -30,10 +39,9 @@ def get_definition_mdx(word, builder):
 
     try:
         # PyInstaller creates a temp folder and stores path in _MEIPASS
-        # base_path = sys._MEIPASS
-        base_path = os.path.dirname(sys.executable)
-    except Exception:
-        base_path = os.path.abspath(".")
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.dirname(os.path.abspath(__file__))
             
     resource_path = os.path.join(base_path, 'mdx')
 
@@ -50,6 +58,8 @@ def get_definition_mdx(word, builder):
 def get_definition_mdd(word, builder):
     """根据关键字得到MDX词典的媒体"""
     word = word.replace("/","\\")
+    if not hasattr(builder, '_mdd_db'):
+        return []
     content = builder.mdd_lookup(word)
     if len(content) > 0:
         return [content[0]]

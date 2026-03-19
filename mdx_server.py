@@ -46,10 +46,9 @@ content_type_map = {
 
 try:
     # PyInstaller creates a temp folder and stores path in _MEIPASS
-    #base_path = sys._MEIPASS
-    base_path = os.path.dirname(sys.executable)
-except Exception:
-    base_path = os.path.abspath(".")
+    base_path = sys._MEIPASS
+except AttributeError:
+    base_path = os.path.dirname(os.path.abspath(__file__))
         
 resource_path = os.path.join(base_path, 'mdx')
 print("resouce path : " + resource_path)
@@ -114,9 +113,23 @@ if __name__ == '__main__':
 
     # use GUI to select file, default to extract
     if not args.filename:
-        root = tk.Tk()
-        root.withdraw()
-        args.filename = filedialog.askopenfilename(parent=root)
+        if sys.platform == 'darwin':
+            # macOS: use native AppleScript dialog to avoid Tkinter window positioning
+            # and event loop issues when running as a non-bundle Python script
+            import subprocess
+            script = 'POSIX path of (choose file with prompt "Select MDX/MDD File:")'
+            proc = subprocess.run(['osascript', '-e', script], capture_output=True, text=True)
+            args.filename = proc.stdout.strip() if proc.returncode == 0 else ''
+        else:
+            root = tk.Tk()
+            root.withdraw()
+            root.update()
+            args.filename = filedialog.askopenfilename(
+                parent=root,
+                title='Select MDX/MDD File',
+                filetypes=[('MDict files', '*.mdx *.mdd'), ('All files', '*.*')]
+            )
+            root.destroy()
 
     if not os.path.exists(args.filename):
         print("Please specify a valid MDX/MDD file")
