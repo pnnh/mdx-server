@@ -70,30 +70,46 @@ def get_url_map():
 
 def application(environ, start_response):
     path_info = environ['PATH_INFO'].encode('iso8859-1').decode('utf-8')
-    print(path_info)
-    m = re.match('/(.*)', path_info)
-    word = ''
-    if m is not None:
-        word = m.groups()[0]
+    query_string = environ.get('QUERY_STRING', '')
+    print(path_info + ('?' + query_string if query_string else ''))
 
+    # ── 1. Built-in mdx/ injection assets (highest priority) ──────────────
     url_map = get_url_map()
-
     if path_info in url_map:
         url_file = url_map[path_info]
         content_type = content_type_map.get(file_util_get_ext(url_file), 'text/html; charset=utf-8')
         start_response('200 OK', [('Content-Type', content_type)])
         return [file_util_read_byte(url_file)]
-    elif file_util_get_ext(path_info) in content_type_map:
+
+    # ── 2. content/public/ static files ───────────────────────────────────
+    public_dir = os.path.join(os.getcwd(), 'content', 'public')
+    if os.path.isdir(public_dir):
+        # strip leading slash, prevent path traversal
+        rel = os.path.normpath(path_info.lstrip('/'))
+        if not rel.startswith('..'):
+            candidate = os.path.join(public_dir, rel)
+            if os.path.isfile(candidate):
+                content_type = content_type_map.get(file_util_get_ext(candidate), 'application/octet-stream')
+                start_response('200 OK', [('Content-Type', content_type)])
+                return [file_util_read_byte(candidate)]
+
+    # ── 3. MDD media lookup (legacy /{path.ext} pattern) ──────────────────
+    if file_util_get_ext(path_info) in content_type_map:
         content_type = content_type_map.get(file_util_get_ext(path_info), 'text/html; charset=utf-8')
         start_response('200 OK', [('Content-Type', content_type)])
         return get_definition_mdd(path_info, builder)
-    else:
+
+    # ── 4. Word lookup  /?word=<word> ──────────────────────────────────────
+    from urllib.parse import parse_qs
+    params = parse_qs(query_string)
+    word_list = params.get('word', [])
+    if word_list:
+        word = word_list[0]
         start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
-        return get_definition_mdx(path_info[1:], builder)
+        return get_definition_mdx(word, builder)
 
-
-    start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
-    return [b'<h1>WSGIServer ok!</h1>']
+    start_response('400 Bad Request', [('Content-Type', 'text/plain; charset=utf-8')])
+    return [b'Missing required query parameter: word']
 
 
 # 新线程执行的代码
@@ -110,6 +126,19 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("filename", nargs='?', help="mdx file name")
     args = parser.parse_args()
+
+    # auto-detect *.mdx under ./content/ before falling back to GUI
+    if not args.filename:
+        content_dir = os.path.join(os.getcwd(), 'content')
+        if os.path.isdir(content_dir):
+            mdx_files = sorted(
+                p for root, _, files in os.walk(content_dir)
+                for f in files if f.lower().endswith('.mdx')
+                for p in [os.path.join(root, f)]
+            )
+            if mdx_files:
+                args.filename = mdx_files[0]
+                print("Auto-detected MDX file: " + args.filename)
 
     # use GUI to select file, default to extract
     if not args.filename:
